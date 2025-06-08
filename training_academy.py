@@ -293,7 +293,7 @@ class hangingman_academy:
         losses_in_time = []
         print("training")
         for epoch in range(self.supervised_epochs):
-            print(f"{epoch = }")
+            print(f"\n{epoch = }")
             t_0 = time.time()
             total_loss = 0
             for assignment in training_assignments:
@@ -301,14 +301,12 @@ class hangingman_academy:
                 clue, length, guess, true_dist = assignment
                 pred_dist = brain.forward(clue, length, guess)
 
-                loss = self.supervised_penalty(pred_dist, true_dist).sum()
+                loss = self.supervised_penalty(pred_dist, true_dist).mean()
 
                 loss.backward()
                 optimizer.step()
                 total_loss += loss.item()
-            print(
-                f"time for this epoch is {time.time()-t_0}, epoch loss: {total_loss}\n"
-            )
+            print(f"time for this epoch is {time.time()-t_0}, epoch loss: {total_loss}")
             losses_in_time.append(total_loss)
 
         self.make_supervised_diagnostic(losses_in_time, working_dir)

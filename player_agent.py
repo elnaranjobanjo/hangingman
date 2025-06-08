@@ -64,7 +64,7 @@ class player_brain(nn.Module):
         torch.save(self.state_dict(), os.path.join(working_dir, "player_brain.pt"))
 
     def load(self, working_dir):
-        self.load_state_dict(os.path.join(working_dir, "player_brain.pt"))
+        self.load_state_dict(torch.load(os.path.join(working_dir, "player_brain.pt")))
 
 
 # class guessed_container:
