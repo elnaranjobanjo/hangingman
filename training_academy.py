@@ -7,6 +7,14 @@ import re
 from collections import defaultdict
 import math
 import torch
+import torch.nn.functional as F
+import os
+import string
+import time
+from torch.utils.data import TensorDataset, DataLoader
+import ast
+import matplotlib.pyplot as plt
+
 
 import player_agent
 
@@ -30,6 +38,9 @@ class referee_agent:
         self.word_letters = set([x for x in secret_word])
         self.game_finished = False
         self.game_won = False
+        self.letter_prob_dist = {x: 0 for x in string.ascii_lowercase}
+        for letter in secret_word:
+            self.letter_prob_dist[letter] += 1 / len(secret_word)
 
     def provide_word_clue(self):
         return "".join(self.current_clue)
@@ -40,7 +51,18 @@ class referee_agent:
             if real_letter == guess:
                 self.current_clue[i] = f"{guess} "
 
-    def get_player_guess(self, guess):
+    def update_prob_dist(self, guessed_container):
+        # print("entered")
+        # print(f"{self.letter_prob_dist = }")
+        self.letter_prob_dist = {x: 0 for x in string.ascii_lowercase}
+        num_unguessed = len([x for x in self.secret_word if x not in guessed_container])
+        for letter in self.secret_word:
+            if letter not in guessed_container:
+                self.letter_prob_dist[letter] += 1 / num_unguessed
+
+        # print(f"{self.letter_prob_dist = }")
+
+    def get_player_guess(self, guess, guessed_container=None):
         if guess in self.word_letters:
             self.word_letters.remove(guess)
             self.update_clue(guess)
@@ -54,59 +76,303 @@ class referee_agent:
             if self.num_strikes == 0:
                 self.game_finished = True
                 self.game_won == False
-
+        if guessed_container:
+            self.update_prob_dist(guessed_container)
         return correct
 
 
-def play_games(player, word_bank, num_games=10, num_strikes=6, random_seed=137):
-    random.seed(random_seed)
+class guessed_container:
+    def __init__(self):
+        self.reset()
+        self.letters_to_dim = {x: int(i) for i, x in enumerate(string.ascii_lowercase)}
+
+    def reset(self):
+        self.guessed_letters = []
+        self.guessed_tensor = torch.zeros(26)
+
+    def update(self, letter):
+        self.guessed_letters.append(letter)
+        self.guessed_tensor[self.letters_to_dim[letter]] = torch.tensor(1.0)
+
+
+class game_board:
+    def __init__(self, device):
+        self.characters_to_dim = {
+            x: int(i) for i, x in enumerate(string.ascii_lowercase)
+        }
+        self.characters_to_dim["_"] = 26.0
+        self.characters_to_dim["X"] = 27.0
+
+        self.letters_to_dim = {x: int(i) for i, x in enumerate(string.ascii_lowercase)}
+        self.device = device
+
+    def get_single_clue_tensor(self, clean_clue):
+        clue_tensor = torch.zeros(30, dtype=torch.long)
+        for position, letter in enumerate(clean_clue):
+            clue_tensor[position] = self.characters_to_dim[letter]
+
+        # padding
+        for position in range(len(clean_clue), 29):
+            clue_tensor[position] = self.characters_to_dim["X"]
+
+        return clue_tensor
+
+    def get_batch_clue_tensor(self, clue_batch):
+
+        clean_clues = [x[::2] for x in clue_batch]
+        lengths = [torch.tensor(len(x) / 29.0) for x in clean_clues]
+
+        position_encodings = list(
+            map(lambda x: self.get_single_clue_tensor(x), clean_clues)
+        )
+        return torch.stack(position_encodings).to(self.device), torch.stack(lengths).to(
+            self.device
+        )
+
+    def get_single_guess_tensor(self, guess_letters):
+        guess_tensor = torch.zeros(26)
+        for guess_letter in guess_letters:
+            guess_tensor[self.letters_to_dim[guess_letter]] = torch.tensor(1.0)
+        return guess_tensor
+
+    def get_batch_guess_tensor(self, guess_batch):
+        guess_batch_decoded = [ast.literal_eval(g) for g in guess_batch]
+        guess_encodings = list(
+            map(lambda x: self.get_single_guess_tensor(x), guess_batch_decoded)
+        )
+
+        return torch.stack(guess_encodings).to(self.device)
+
+    def get_batch_true_letter_prob_dist(self, dist_batch):
+        return torch.stack(
+            [torch.tensor(ast.literal_eval(dist)) for dist in dist_batch]
+        ).to(self.device)
+
+
+def play_games(
+    player,
+    word_bank,
+    device,
+    num_games=10,
+    num_strikes=6,
+    working_add=None,
+):
+
+    board = game_board(device)
+    if working_add:
+        os.makedirs(working_add, exist_ok=True)
+        game_records = []
     results = []
-    start_with_vowel = 0
+    t_0 = time.time()
     for i, secret_word in enumerate(random.sample(word_bank, k=num_games)):
-        print(f"game_number = {i}")
-        print(f"{secret_word = }")
-        print("Game has started\n")
+        # print(f"game_number = {i}")
+        # print(f"{secret_word = }")
+        # print("Game has started\n")
 
         referee = referee_agent(secret_word, num_strikes)
+        guess_cont = guessed_container()
+
+        if working_add:
+            game_records.append(
+                [
+                    referee.provide_word_clue(),
+                    list(player.guessed_letters),
+                    list(referee.letter_prob_dist.values()),
+                ]
+            )
 
         while not referee.game_finished:
             clue = referee.provide_word_clue()
-            print(f"{clue = }")
-            guess = player.guess(clue)
-            round_result = referee.get_player_guess(guess)
+            # print(f"{clue = }")
+            clue_tensor, length = board.get_single_clue_tensor(clue[::2]).to(
+                device
+            ), torch.tensor(len(clue[::2]) / 29.0).to(device)
+            guess = player.guess(
+                clue_tensor.to(device),
+                torch.tensor(length),
+                guess_cont.guessed_tensor.to(device),
+                guess_cont.guessed_letters,
+            )
+            guess_cont.update(guess)
+            if working_add:
+                round_result = referee.get_player_guess(
+                    guess, guessed_container=player.guessed_letters
+                )
+            else:
+                round_result = referee.get_player_guess(guess)
+            # results.append(round_result)
+            # print(f"{guess = } ")
+            # print(f"Guess correct? {round_result}")
+            # print(f"{player.guessed_letters = }")
+            # print(f"{referee.letter_prob_dist = }")
+            # print(f"Player trials left = {referee.num_strikes}\n")
 
-            print(f"{guess = } ")
-            print(f"Guess correct? {round_result}")
-            print(f"Player trials left = {referee.num_strikes}\n")
-
-            if guess in ["a", "e", "o", "i", "u"]:
-                start_with_vowel += 1
-            # break
-
-        print(f"Game won? {referee.game_won}\n\n")
-        results.append(referee.game_won)
-
-        player.reset()
+            if working_add:
+                game_records.append(
+                    [
+                        referee.provide_word_clue(),
+                        list(player.guessed_letters),
+                        [v for v in referee.letter_prob_dist.values()],
+                    ]
+                )
 
         if i % 100 == 0:
-            print(f"\nplayed {i} games.\n")
-    # print(f"{start_with_vowel = }")
+            t_1 = time.time()
+            print(f"time for 100 games = {t_1-t_0}")
+            t_0 = t_1
+        # print(f"Game won? {referee.game_won}\n\n")
+        results.append(referee.game_won)
+
+    # print(f"{game_records["clue"].head() = }")
+    # print(f"{game_records["guesses"].head() = }")
+    # print(f"{game_records["true_prob_distribution"].head() = }")
+    print(f"{working_add = }")
+    if working_add:
+        pd.DataFrame(
+            game_records, columns=["clue", "guesses", "true_prob_distribution"]
+        ).to_csv(os.path.join(working_dir, "training.csv"), index=False)
     return results
 
 
+class hangingman_academy:
+    def __init__(self, device):
+        self.device = device
+        self.batch_size = int(64)
+        self.board = game_board(device)
+        self.supervised_epochs = 100
+
+    def play_round():
+        pass
+
+    def supervised_penalty(self, pred, true):
+        log_probs = F.log_softmax(pred, dim=-1)
+        loss = -(true * log_probs).sum(dim=-1)
+        return loss
+
+    def get_training_assingments_supervised(self, working_dir):
+        raw = pd.read_csv(os.path.join(working_dir, "training.csv"))
+        print(f"size training set = {raw.shape}")
+        clue, length = self.board.get_batch_clue_tensor(raw["clue"].to_list())
+        guesses = self.board.get_batch_guess_tensor(raw["guesses"].to_list())
+        true_prob_dist = self.board.get_batch_true_letter_prob_dist(
+            raw["true_prob_distribution"].to_list()
+        )
+        training_dataset = TensorDataset(clue, length, guesses, true_prob_dist)
+
+        return DataLoader(
+            training_dataset,
+            batch_size=self.batch_size,
+            shuffle=True,
+        )
+
+    def make_supervised_diagnostic(self, losses_in_time, working_dir):
+
+        plt.plot(
+            range(1, self.supervised_epochs + 1),
+            losses_in_time,
+            linestyle="-",
+            color="blue",
+        )
+        plt.scatter(
+            range(1, self.supervised_epochs + 1), losses_in_time, color="red", zorder=5
+        )
+        plt.xlabel("Epochs")
+        plt.ylabel("Sum of Cross entropies")
+        plt.title("Training Loss Over Epochs")
+        plt.grid(True)
+        plt.savefig(os.path.join(working_dir, "loss_over_epochs.png"))
+
+    def train_player_supervised(self, working_dir):
+        print("loading training data")
+        t_0 = time.time()
+        training_assignments = self.get_training_assingments_supervised(working_dir)
+        t_1 = time.time()
+        print(f"unpacking training data took: {t_1-t_0}")
+        brain = player_agent.player_brain().to(self.device)
+        optimizer = torch.optim.Adam(brain.parameters(), lr=1e-3)
+        losses_in_time = []
+        print("training")
+        for epoch in range(self.supervised_epochs):
+            print(f"{epoch = }")
+            t_0 = time.time()
+            total_loss = 0
+            for assignment in training_assignments:
+                optimizer.zero_grad()
+                clue, length, guess, true_dist = assignment
+                pred_dist = brain.forward(clue, length, guess)
+
+                loss = self.supervised_penalty(pred_dist, true_dist).sum()
+
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+            print(
+                f"time for this epoch is {time.time()-t_0}, epoch loss: {total_loss}\n"
+            )
+            losses_in_time.append(total_loss)
+
+        self.make_supervised_diagnostic(losses_in_time, working_dir)
+        brain.save(working_dir)
+        print(f"HEre")
+        player = player_agent.player_agent(self.device)
+        return player.implant_brain(brain)
+
+
 if __name__ == "__main__":
+    random_seed = 137
+    random.seed(random_seed)
+    torch.set_default_dtype(torch.float32)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    torch.set_default_dtype(torch.double)
-    num_strikes = np.inf
-    num_games = 1
-    player = player_agent.player_agent(device)
+    # working_dir = "./toy_train"
+    working_dir = "./using_137_seed"
+    academy = hangingman_academy(device)
+    player = academy.train_player_supervised(working_dir)
+    print("Done training")
 
     train, val = get_train_val_sets()
-
+    num_games = 100  # val.shape[0]
+    print(f"Validating {num_games = }")
     games_results = play_games(
-        player, val["word"].to_list(), num_games=num_games, num_strikes=num_strikes
+        player,
+        val["word"].to_list(),
+        device,
+        num_games=num_games,
+        num_strikes=6,
+        working_add=None,
     )
 
     print(
         f"Played a total of: {num_games} and won {np.sum(games_results)}\nThis represents a {100*np.sum(games_results)/num_games}% win rate."
     )
+
+
+# We'll extract the necessary data for our supervised learning algorithm.
+# def get_player_assignments(word_bank):
+#     player = player_agent.noob_player()
+#     for word in word_bank:
+#         pass
+
+
+# if __name__ == "__main__":
+#     random_seed = 137
+#     random.seed(random_seed)
+#     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+#     torch.set_default_dtype(torch.float32)
+#     num_strikes = np.inf
+
+#     train, val = get_train_val_sets()
+#     player = player_agent.noob_player(train)
+#     num_games = train.shape[0]
+#     print(f"{train.shape[0] = }")
+
+#     games_results = play_games(
+#         player,
+#         train["word"].to_list(),
+#         num_games=num_games,
+#         num_strikes=num_strikes,
+#         record_for_training_address="./using_137_seed",
+#     )
+
+#     print(
+#         f"Played a total of: {num_games} and won {np.sum(games_results)}\nThis represents a {100*np.sum(games_results)/num_games}% win rate."
+#     )
