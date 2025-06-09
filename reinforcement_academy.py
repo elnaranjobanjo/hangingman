@@ -21,6 +21,37 @@ import player_agent
 from gen_utils import get_train_val_sets, referee_agent, guessed_container, game_board
 
 
+def make_win_rates_diagnostics(i, win_rates, win_stats, working_dir):
+    i = int(i)
+    plt.scatter(range(i // int(100)), win_rates, color="red", zorder=5)
+    plt.xlabel("Numbers of games (in hundreds)")
+    plt.ylabel("Win percent over the last 100 games")
+    plt.title("Evolution of win rates over time")
+    plt.grid(True)
+    plt.savefig(os.path.join(working_dir, "win_rates_in_time.png"))
+    plt.close()
+
+    plt.scatter(
+        range(i // int(1000)), [mean for mean, _ in win_stats], color="red", zorder=5
+    )
+    plt.xlabel("Numbers of games (in thousands)")
+    plt.ylabel("mean of the win rates over the last 1000 games")
+    plt.title("Evolution of mean win rate in time")
+    plt.grid(True)
+    plt.savefig(os.path.join(working_dir, "win_means.png"))
+    plt.close()
+
+    plt.scatter(
+        range(i // int(1000)), [std for _, std in win_stats], color="red", zorder=5
+    )
+    plt.xlabel("Numbers of games (in thousands)")
+    plt.ylabel("std of the win rates over the last 1000 games")
+    plt.title("Evolution of std win rate in time")
+    plt.grid(True)
+    plt.savefig(os.path.join(working_dir, "win_stds.png"))
+    plt.close()
+
+
 def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train=False):
     board = game_board(device)
     if train:
@@ -31,10 +62,44 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
 
     results = []
     t_0 = time.time()
-    i = 0
+    i = 1
     win_rates = []
     win_stats = []
+    loss = 0
     while True:
+
+        if i % 100 == 0:
+            t_1 = time.time()
+            print(f"time for 100 games = {t_1-t_0}")
+            t_0 = t_1
+            win_rate = np.sum(results[-100:])
+            win_rates.append(win_rate)
+            print(
+                f"Current win rate over the last 100 games =  {win_rate}% win rate.\n"
+            )
+            if i % 1000 == 0:
+                if train:
+                    loss.backward()
+                    optimizer.step()
+                    optimizer.zero_grad()
+                    loss = 0
+                    print("saved_net\n")
+                    brain.save(working_dir, reinforcement=True)
+
+                print(f"{i = }")
+                mean = np.mean(win_rates[-10:])
+                std = np.std(win_rates[-10:])
+
+                print(
+                    f"During the last 10 batces of 100 games:\nmean win rate = {mean}\nstd win rate = {std}\n"
+                )
+                if i > 2000:
+                    print(
+                        f"Overall improvement in means and std {mean - win_stats[-1][0]} and std {std - win_stats[-1][1]}"
+                    )
+                win_stats.append((mean, std))
+                make_win_rates_diagnostics(i, win_rates, win_stats, working_dir)
+
         secret_word = random.choice(word_bank)
         # print(f"game_number = {i}")
         # print(f"{secret_word = }")
@@ -42,10 +107,8 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
 
         referee = referee_agent(secret_word, num_strikes)
         guess_cont = guessed_container()
-        round_scores = []
-        guess_log_prob_record = []
-        if train:
-            optimizer.zero_grad()
+        # round_scores = []
+        # guess_log_prob_record = []
 
         while not referee.game_finished:
             clue = referee.provide_word_clue()
@@ -63,11 +126,11 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
 
             round_result = referee.get_player_guess(guess_letter)
             if round_result:
-                round_scores.append(1)
+                loss += -guess_log_prob
             else:
-                round_scores.append(0)
+                loss += -guess_log_prob
 
-            guess_log_prob_record.append(guess_log_prob)
+            # guess_log_prob_record.append(guess_log_prob)
 
             # print(f"{clue = }")
             # print(f"{guess_letter = } ")
@@ -75,51 +138,11 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
             # print(f"{guess_cont.guessed_letters = }")
             # print(f"Player trials left = {referee.num_strikes}\n")
 
-        if referee.game_won:
-            round_scores = [x + 10 / len(round_scores) for x in round_scores]
         # print(f"{guess_log_prob_record = }\n")
         # print(f"{torch.stack(guess_log_prob_record).to(device) = }")
-        if train:
-            round_scores = torch.tensor(round_scores)
-            loss = -guess_log_prob_record[0] * round_scores[0]
-            # torch.autograd.set_detect_anomaly(True)
-            for k in range(1, len(round_scores)):
-                # print(f"{guess_log_prob_record[i] = }")
-                # print(f"{round_scores[i] = }")
-                loss += -guess_log_prob_record[k] * round_scores[k]
-
-            loss.backward()
-            optimizer.step()
 
         # print(f"Game won? {referee.game_won}\n\n")
         results.append(referee.game_won)
-        if i % 100 == 0 and i > 0:
-            t_1 = time.time()
-            print(f"time for 100 games = {t_1-t_0}")
-            t_0 = t_1
-            if train:
-                print("saved")
-                brain.save(working_dir, reinforcement=True)
-            win_rate = np.sum(results[-100:])
-            win_rates.append(win_rate)
-            print(
-                f"Current win rate over the last 100 games =  {win_rate}% win rate.\n"
-            )
-            if i % 1000 == 0:
-                print(f"{i = }")
-                mean = np.mean(win_rates[-10:])
-                std = np.std(win_rates[-10:])
-
-                print(
-                    f"During the last 10 batces of 100 games:\nmean win rate = {mean}\nstd win rate = {std}\n"
-                )
-                if i > 2000:
-                    print(
-                        f"Overall improvement in means and std {mean - win_stats[-1][0]} and std {std - win_stats[-1][1]}"
-                    )
-                win_stats.append((mean, std))
-            # if win_rate >= 60:
-            # break
 
         i += 1
 

@@ -73,6 +73,7 @@ class hangingman_academy:
         plt.title("Training Loss Over Epochs")
         plt.grid(True)
         plt.savefig(os.path.join(working_dir, "loss_over_epochs.png"))
+        plt.close()
 
     def train_player_supervised(self, working_dir):
         # print("loading training data")
