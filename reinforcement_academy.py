@@ -21,7 +21,7 @@ import player_agent
 from gen_utils import get_train_val_sets, referee_agent, guessed_container, game_board
 
 
-def make_win_rates_diagnostics(i, win_rates, win_stats, working_dir):
+def make_win_rates_diagnostics(i, win_rates, win_stats, losses_in_time, working_dir):
     i = int(i)
     plt.scatter(range(i // int(100)), win_rates, color="red", zorder=5)
     plt.xlabel("Numbers of games (in hundreds)")
@@ -51,6 +51,14 @@ def make_win_rates_diagnostics(i, win_rates, win_stats, working_dir):
     plt.savefig(os.path.join(working_dir, "win_stds.png"))
     plt.close()
 
+    plt.scatter(range(i // int(1000)), losses_in_time, color="red", zorder=5)
+    plt.xlabel("Numbers of games (in thousands)")
+    plt.ylabel("loss collected over the last 1000 games")
+    plt.title("Evolution of loss in time")
+    plt.grid(True)
+    plt.savefig(os.path.join(working_dir, "loss.png"))
+    plt.close()
+
 
 def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train=False):
     board = game_board(device)
@@ -66,6 +74,7 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
     win_rates = []
     win_stats = []
     loss = 0
+    losses_in_time = []
     while True:
 
         if i % 100 == 0:
@@ -75,18 +84,21 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
             win_rate = np.sum(results[-100:])
             win_rates.append(win_rate)
             print(
-                f"Current win rate over the last 100 games =  {win_rate}% win rate.\n"
+                f"Current win rate over the last 100 games =  {win_rate}% win rate.\n\n"
             )
             if i % 1000 == 0:
+                print(f"{i = }")
+                losses_in_time.append(loss.item())
                 if train:
+                    print(f"Updating AI...")
                     loss.backward()
                     optimizer.step()
                     optimizer.zero_grad()
+                    print(f"loss collected over last 1000 games = {loss.item()}")
                     loss = 0
-                    print("saved_net\n")
+                    print("saved_net")
                     brain.save(working_dir, reinforcement=True)
 
-                print(f"{i = }")
                 mean = np.mean(win_rates[-10:])
                 std = np.std(win_rates[-10:])
 
@@ -95,10 +107,12 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
                 )
                 if i > 2000:
                     print(
-                        f"Overall improvement in means and std {mean - win_stats[-1][0]} and std {std - win_stats[-1][1]}"
+                        f"Overall improvement in means and std {mean - win_stats[-1][0]} and std {std - win_stats[-1][1]}\n\n"
                     )
                 win_stats.append((mean, std))
-                make_win_rates_diagnostics(i, win_rates, win_stats, working_dir)
+                make_win_rates_diagnostics(
+                    i, win_rates, win_stats, losses_in_time, working_dir
+                )
 
         secret_word = random.choice(word_bank)
         # print(f"game_number = {i}")
@@ -125,7 +139,9 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
             guess_cont.update(guess_letter)
 
             round_result = referee.get_player_guess(guess_letter)
-            if not round_result:
+            if round_result:
+                loss += guess_log_prob
+            else:
                 loss += -guess_log_prob
 
             # guess_log_prob_record.append(guess_log_prob)

@@ -149,7 +149,7 @@ class hangingman_academy:
 
         self.make_supervised_diagnostic(losses_in_time, working_dir)
         brain.save(working_dir)
-
+        print("Done training...")
         return brain
 
 
@@ -162,12 +162,12 @@ if __name__ == "__main__":
     # working_dir = "./toy_train"
     working_dir = "./supervised_results"
     academy = hangingman_academy(device)
-    brain = academy.train_player_supervised(working_dir)
+    # brain = academy.train_player_supervised(working_dir)
 
     train, val = get_train_val_sets()
 
-    # brain = player_agent.player_brain_v4()
-    # brain.load(working_dir)
+    brain = player_agent.player_brain_v4()
+    brain.load(working_dir)
     play_games(brain, val["word"].to_list(), working_dir)
 
     # games_results = play_games(
