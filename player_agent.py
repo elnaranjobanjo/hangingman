@@ -227,6 +227,90 @@ class player_brain_v3(nn.Module):
             )
 
 
+class player_brain_v4(nn.Module):
+    def __init__(
+        self,
+    ):
+        super().__init__()
+        max_word_len = 29
+
+        self.vocab_size = 28
+        self.embedding_dim = 32
+
+        self.embedding = nn.Embedding(self.vocab_size, self.embedding_dim)
+
+        self.hidden_dim = 128
+
+        self.lstm1 = nn.LSTM(
+            input_size=self.embedding_dim,
+            hidden_size=64,
+            batch_first=True,
+            bidirectional=True,
+        )
+
+        self.lstm2 = nn.LSTM(
+            input_size=128, hidden_size=64, batch_first=True, bidirectional=True
+        )
+
+        self.pooling = torch.nn.AdaptiveAvgPool1d(1)
+
+        self.guessed_embedding = nn.Sequential(
+            nn.Linear(26, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+        )
+
+        self.classifier_input_size = 128 + 1 + 64
+
+        self.classifier = nn.Sequential(
+            nn.Linear(self.classifier_input_size, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 26),
+        )
+
+    def forward(self, clue_tensor, length, guessed_tensor):
+        embedded_clue = self.embedding(clue_tensor)
+        lstm1_out, (h_n, c_n) = self.lstm1(embedded_clue)
+        lstm2_out, (h_n, c_n) = self.lstm2(lstm1_out)
+
+        guess_embedded = self.guessed_embedding(guessed_tensor)
+        x = torch.cat(
+            [
+                self.pooling(lstm2_out.transpose(1, 2)).squeeze(-1),
+                length.view(-1, 1),
+                guess_embedded,
+            ],
+            dim=1,
+        )
+        return self.classifier(x)
+
+    def save(self, working_dir: str, reinforcement=False) -> None:
+        if reinforcement:
+            torch.save(
+                self.state_dict(),
+                os.path.join(working_dir, "player_brain_reinforced_v4.pt"),
+            )
+        else:
+            torch.save(
+                self.state_dict(),
+                os.path.join(working_dir, "player_brain_supervised_v4.pt"),
+            )
+
+    def load(self, working_dir, reinforcement=False):
+        if reinforcement:
+            self.load_state_dict(
+                torch.load(os.path.join(working_dir, "player_brain_reinforced_v4.pt"))
+            )
+        else:
+            self.load_state_dict(
+                torch.load(os.path.join(working_dir, "player_brain_supervised_v4.pt"))
+            )
+
+
 class player_agent:
     def __init__(self, device):
         self.device = device
