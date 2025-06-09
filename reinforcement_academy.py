@@ -25,39 +25,99 @@ outer_ind = int(1000)
 
 def make_win_rates_diagnostics(i, win_rates, win_stats, losses_in_time, working_dir):
     i = int(i)
-    plt.scatter(range(10 * i // outer_ind), win_rates, color="red", zorder=5)
+    x_vals = range(10 * i // outer_ind)
+    m_win_rates, b_win_rates = np.polyfit(x_vals, win_rates, 1)
+    plt.plot(
+        x_vals,
+        m_win_rates * x_vals + b_win_rates,
+        color="blue",
+        linestyle="--",
+        label="Trend line",
+    )
+    plt.scatter(x_vals, win_rates, color="red", zorder=5)
     plt.xlabel(f"Numbers of games ({outer_ind//10})x games")
     plt.ylabel(f"Win percent over the last {outer_ind} games")
     plt.title("Evolution of win rates over time")
     plt.grid(True)
+    plt.legend()
     plt.savefig(os.path.join(working_dir, "win_rates_in_time.png"))
     plt.close()
 
-    plt.scatter(
-        range(i // outer_ind), [mean for mean, _ in win_stats], color="red", zorder=5
+    # plt.scatter(
+    #     range(i // outer_ind), [mean for mean, _ in win_stats], color="red", zorder=5
+    # )
+    # plt.xlabel(f"Numbers of games ({outer_ind}x games)")
+    # plt.ylabel(f"mean of the win rates over the last {outer_ind} games")
+    # plt.title("Evolution of mean win rate in time")
+    # plt.grid(True)
+    # plt.savefig(os.path.join(working_dir, "win_means.png"))
+    # plt.close()
+
+    # plt.scatter(
+    #     range(i // outer_ind), [std for _, std in win_stats], color="red", zorder=5
+    # )
+    # plt.xlabel(f"Numbers of games ({outer_ind}x games)")
+    # plt.ylabel(f"std of the win rates over the last {outer_ind} games")
+    # plt.title("Evolution of std win rate in time")
+    # plt.grid(True)
+    # plt.savefig(os.path.join(working_dir, "win_stds.png"))
+    # plt.close()
+
+    x_vals = range(i // outer_ind)
+    means = [mean for mean, _ in win_stats]
+    stds = [std for _, std in win_stats]
+    print(f"{x_vals = }")
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+
+    m_mean, b_mean = np.polyfit(x_vals, means, 1)
+    axes[0].plot(
+        x_vals,
+        m_mean * x_vals + b_mean,
+        color="blue",
+        linestyle="--",
+        label="Trend line",
     )
-    plt.xlabel(f"Numbers of games ({outer_ind}x games)")
-    plt.ylabel(f"mean of the win rates over the last {outer_ind} games")
-    plt.title("Evolution of mean win rate in time")
-    plt.grid(True)
-    plt.savefig(os.path.join(working_dir, "win_means.png"))
+    axes[0].scatter(x_vals, means, color="red", zorder=5)
+    axes[0].set_xlabel(f"Number of games ({outer_ind}x games)")
+    axes[0].set_ylabel("Mean")
+    axes[0].set_title("Mean Win Rate Over Time ({outer_ind}x games)")
+    axes[0].grid(True)
+    axes[0].legend()
+
+    m_std, b_std = np.polyfit(x_vals, stds, 1)
+    axes[1].plot(
+        x_vals,
+        m_std * x_vals + b_std,
+        color="blue",
+        linestyle="--",
+        label="Trend line",
+    )
+    axes[0]
+    axes[1].scatter(x_vals, stds, color="red", zorder=5)
+    axes[1].set_xlabel(f"Number of games ({outer_ind}x games)")
+    axes[1].set_ylabel("Std win rate")
+    axes[1].set_title("Std")
+    axes[1].grid(True)
+    axes[1].legend()
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(working_dir, "win_stats_summary.png"))
     plt.close()
 
-    plt.scatter(
-        range(i // outer_ind), [std for _, std in win_stats], color="red", zorder=5
+    m_losses_in_time, b_losses_in_time = np.polyfit(x_vals, losses_in_time, 1)
+    plt.plot(
+        x_vals,
+        m_losses_in_time * x_vals + b_losses_in_time,
+        color="blue",
+        linestyle="--",
+        label="Trend line",
     )
-    plt.xlabel(f"Numbers of games ({outer_ind}x games)")
-    plt.ylabel(f"std of the win rates over the last {outer_ind} games")
-    plt.title("Evolution of std win rate in time")
-    plt.grid(True)
-    plt.savefig(os.path.join(working_dir, "win_stds.png"))
-    plt.close()
-
-    plt.scatter(range(i // outer_ind), losses_in_time, color="red", zorder=5)
+    plt.scatter(x_vals, losses_in_time, color="red", zorder=5)
     plt.xlabel(f"Numbers of games ({outer_ind}x games)")
     plt.ylabel(f"loss collected over the last {outer_ind} games")
     plt.title("Evolution of loss in time")
     plt.grid(True)
+    plt.legend()
     plt.savefig(os.path.join(working_dir, "wloss.png"))
     plt.close()
 
@@ -66,9 +126,9 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
     board = game_board(device)
     if train:
         print("Training a player\n\n")
-        optimizer = torch.optim.Adam(brain.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(brain.parameters(), lr=1e-4)
     player = player_agent.player_agent(device)
-    player.implant_brain(brain)
+    player.implant_brain(brain.to("cpu"))
 
     results = []
     t_0 = time.time()
@@ -108,14 +168,16 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
                 print(
                     f"During the last 10 batces of {outer_ind//10} games:\nmean win rate = {mean}\nstd win rate = {std}\n"
                 )
-                if i > 2 * outer_ind:
-                    print(
-                        f"Overall improvement in means and std {mean - win_stats[-1][0]} and std {std - win_stats[-1][1]}\n\n"
-                    )
+
                 win_stats.append((mean, std))
-                make_win_rates_diagnostics(
-                    i, win_rates, win_stats, losses_in_time, working_dir
-                )
+
+                if i > 2 * outer_ind:
+                    # print(
+                    #     f"Overall improvement in means and std {mean - win_stats[-1][0]} and std {std - win_stats[-1][1]}\n\n"
+                    # )
+                    make_win_rates_diagnostics(
+                        i, win_rates, win_stats, losses_in_time, working_dir
+                    )
                 # time.sleep(3)
 
         secret_word = random.choice(word_bank)
@@ -157,15 +219,10 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
         # print(f"Game won? {referee.game_won}\n\n")
         game_reward = 10.0 if referee.game_won else -10.0
         rewards = [x + game_reward / len(rewards) for x in rewards]
-        loss += sum([-lp * r for lp, r in zip(log_probs, rewards)])
+        loss += sum([-lp * r for lp, r in zip(log_probs, rewards)]) / len(rewards)
         results.append(referee.game_won)
 
-        # if referee.game_won:
-        #     loss += -guess_log_prob
-        # else:
-        #     loss += guess_log_prob
-
-        if i > 220000:
+        if i == len(word_bank):
             break
 
         i += 1
@@ -185,8 +242,8 @@ if __name__ == "__main__":
 
     train, val = get_train_val_sets()
 
-    # brain = player_agent.player_brain_v4()
-    brain = player_agent.player_brain_v2()
+    brain = player_agent.player_brain_v4()
+    # brain = player_agent.player_brain_v2()
     brain.load(working_dir, reinforcement=False)
 
     play_games(brain, train["word"].to_list(), working_dir, train=True)
