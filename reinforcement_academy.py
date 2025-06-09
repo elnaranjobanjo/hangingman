@@ -20,7 +20,7 @@ import player_agent
 
 from gen_utils import get_train_val_sets, referee_agent, guessed_container, game_board
 
-outer_ind = int(3000)
+outer_ind = int(1000)
 
 
 def make_win_rates_diagnostics(i, win_rates, win_stats, losses_in_time, working_dir):
@@ -58,7 +58,7 @@ def make_win_rates_diagnostics(i, win_rates, win_stats, losses_in_time, working_
     plt.ylabel(f"loss collected over the last {outer_ind} games")
     plt.title("Evolution of loss in time")
     plt.grid(True)
-    plt.savefig(os.path.join(working_dir, "loss.png"))
+    plt.savefig(os.path.join(working_dir, "wloss.png"))
     plt.close()
 
 
@@ -126,6 +126,9 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
         referee = referee_agent(secret_word, num_strikes)
         guess_cont = guessed_container()
 
+        log_probs = []
+        rewards = []
+
         while not referee.game_finished:
             clue = referee.provide_word_clue()
             clue_tensor, length = board.get_single_clue_tensor(clue[::2]).to(
@@ -142,8 +145,8 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
 
             round_result = referee.get_player_guess(guess_letter)
 
-            reward = 1.0 if round_result else -1.0
-            loss += -guess_log_prob * reward
+            rewards.append(1.0 if round_result else -1.0)
+            log_probs.append(guess_log_prob)
 
         #     print(f"{clue = }")
         #     print(f"{guess_letter = } ")
@@ -152,6 +155,9 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
         #     print(f"Player trials left = {referee.num_strikes}\n")
 
         # print(f"Game won? {referee.game_won}\n\n")
+        game_reward = 10.0 if referee.game_won else -10.0
+        rewards = [x + game_reward / len(rewards) for x in rewards]
+        loss += sum([-lp * r for lp, r in zip(log_probs, rewards)])
         results.append(referee.game_won)
 
         # if referee.game_won:
