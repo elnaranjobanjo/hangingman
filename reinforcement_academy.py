@@ -31,6 +31,7 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
     results = []
     t_0 = time.time()
     i = 0
+    win_rates = []
     while True:
         secret_word = random.choice(word_bank)
         # print(f"game_number = {i}")
@@ -46,7 +47,6 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
 
         while not referee.game_finished:
             clue = referee.provide_word_clue()
-            # print(f"{clue = }")
             clue_tensor, length = board.get_single_clue_tensor(clue[::2]).to(
                 device
             ), torch.tensor(len(clue[::2]) / 29.0).to(device)
@@ -68,10 +68,9 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
             guess_log_prob_record.append(guess_log_prob)
 
             # print(f"{clue = }")
-            # print(f"{guess = } ")
+            # print(f"{guess_letter = } ")
             # print(f"Guess correct? {round_result}")
             # print(f"{guess_cont.guessed_letters = }")
-            # print(f"{referee.letter_prob_dist = }")
             # print(f"Player trials left = {referee.num_strikes}\n")
 
         if referee.game_won:
@@ -82,10 +81,10 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
             round_scores = torch.tensor(round_scores)
             loss = -guess_log_prob_record[0] * round_scores[0]
             # torch.autograd.set_detect_anomaly(True)
-            for i in range(1, len(round_scores)):
-                print(f"{guess_log_prob_record[i] = }")
-                print(f"{round_scores[i] = }")
-                loss += -guess_log_prob_record[i] * round_scores[i]
+            for k in range(1, len(round_scores)):
+                # print(f"{guess_log_prob_record[i] = }")
+                # print(f"{round_scores[i] = }")
+                loss += -guess_log_prob_record[k] * round_scores[k]
 
             loss.backward()
             optimizer.step()
@@ -99,7 +98,16 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
             if train:
                 brain.save(working_dir, reinforcement=True)
             win_rate = np.sum(results[-100:])
-            print(f"Current win rate over the last 100 games =  {win_rate}% win rate.")
+            win_rates.append(win_rate)
+            print(
+                f"Current win rate over the last 100 games =  {win_rate}% win rate.\n"
+            )
+            if i % 1000 == 0:
+                print(f"{i = }")
+                print(
+                    f"During the last 10 batces of 100 games:\nmean win rate = {np.mean(win_rates[-10:])}\nstd win rate = {np.std(win_rates[-10:])}\n"
+                )
+
             if win_rate >= 60:
                 break
 
@@ -117,4 +125,5 @@ if __name__ == "__main__":
 
     brain = player_agent.player_brain_v2()
     brain.load(working_dir)
-    play_games(brain, train["word"].to_list(), working_dir, train=True)
+
+    play_games(brain, train["word"].to_list(), working_dir, train=False)

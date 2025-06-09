@@ -88,8 +88,10 @@ class guessed_container:
         self.guessed_tensor = torch.zeros(26)
 
     def update(self, letter):
+
         self.guessed_letters.append(letter)
-        self.guessed_tensor[self.letters_to_dim[letter]] = torch.tensor(1.0)
+        self.guessed_tensor = self.guessed_tensor.clone().detach()
+        self.guessed_tensor[self.letters_to_dim[letter]] = 1.0
 
 
 class game_board:
