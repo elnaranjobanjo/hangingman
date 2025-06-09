@@ -116,7 +116,9 @@ class hangingman_academy:
 
             epoch_time = time.time() - t_0
             total_training_time += epoch_time
-            print(f"Approx time to end = {self.supervised_epochs*epoch_time/3600} hrs")
+            print(
+                f"Approx time to end = {(self.supervised_epochs-epoch)*epoch_time/3600} hrs"
+            )
             print(f"time for this epoch is {epoch_time}, epoch loss: {total_loss}")
             losses_in_time.append(total_loss)
 

@@ -90,8 +90,9 @@ class guessed_container:
     def update(self, letter):
 
         self.guessed_letters.append(letter)
-        self.guessed_tensor = self.guessed_tensor.clone().detach()
-        self.guessed_tensor[self.letters_to_dim[letter]] = 1.0
+        new_tensor = self.guessed_tensor.clone()
+        new_tensor[self.letters_to_dim[letter]] = 1.0
+        self.guessed_tensor = new_tensor
 
 
 class game_board:

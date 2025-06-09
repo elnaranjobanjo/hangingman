@@ -126,4 +126,4 @@ if __name__ == "__main__":
     brain = player_agent.player_brain_v2()
     brain.load(working_dir)
 
-    play_games(brain, train["word"].to_list(), working_dir, train=False)
+    play_games(brain, train["word"].to_list(), working_dir, train=True)
