@@ -11,9 +11,58 @@ import math
 from dataclasses import dataclass
 import string
 import os
+import torch.nn.functional as F
 
 
-class player_brain(nn.Module):
+# Player brain v1
+# class player_brain(nn.Module):
+#     def __init__(
+#         self,
+#     ):
+#         super().__init__()
+#         max_word_len = 29
+
+#         self.vocab_size = 28
+#         self.embedding_dim = 32
+
+#         self.embedding = nn.Embedding(self.vocab_size, self.embedding_dim)
+
+#         self.hidden_dim = 64
+#         self.lstm = nn.LSTM(
+#             input_size=self.embedding_dim, hidden_size=self.hidden_dim, batch_first=True
+#         )
+
+#         guess_dim = 26  # 26 letters
+
+#         self.classifier_input_size = self.hidden_dim + 1 + guess_dim
+
+#         self.classifier = nn.Sequential(
+#             nn.Linear(self.classifier_input_size, 256),
+#             nn.ReLU(),
+#             nn.Linear(256, 128),
+#             nn.ReLU(),
+#             nn.Linear(128, 26),
+#         )
+
+#     def forward(self, clue_tensor, length, guessed_tensor):
+
+#         embedded_clue = self.embedding(clue_tensor)  # shape: [1, clue_len, emb_dim]
+#         lstm_out, (h_n, c_n) = self.lstm(embedded_clue)
+#         x = torch.cat([lstm_out[:, -1, :], length.view(-1, 1), guessed_tensor], dim=1)
+#         return self.classifier(x)
+
+#     def save(
+#         self,
+#         working_dir: str,
+#     ) -> None:
+#         torch.save(self.state_dict(), os.path.join(working_dir, "player_brain.pt"))
+
+#     def load(self, working_dir):
+#         self.load_state_dict(torch.load(os.path.join(working_dir, "player_brain.pt")))
+
+
+# player brain v2
+class player_brain_v2(nn.Module):
     def __init__(
         self,
     ):
@@ -25,12 +74,21 @@ class player_brain(nn.Module):
 
         self.embedding = nn.Embedding(self.vocab_size, self.embedding_dim)
 
-        self.hidden_dim = 64
+        self.hidden_dim = 128
         self.lstm = nn.LSTM(
             input_size=self.embedding_dim, hidden_size=self.hidden_dim, batch_first=True
         )
 
+        self.pooling = torch.nn.AdaptiveAvgPool1d(1)
         guess_dim = 26  # 26 letters
+
+        self.guessed_embedding = nn.Sequential(
+            nn.Linear(26, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 26),
+        )
 
         self.classifier_input_size = self.hidden_dim + 1 + guess_dim
 
@@ -43,42 +101,130 @@ class player_brain(nn.Module):
         )
 
     def forward(self, clue_tensor, length, guessed_tensor):
-
-        embedded_clue = self.embedding(clue_tensor)  # shape: [1, clue_len, emb_dim]
+        # print(f"{clue_tensor.shape = }")
+        embedded_clue = self.embedding(clue_tensor)
         lstm_out, (h_n, c_n) = self.lstm(embedded_clue)
-        # print(f"{lstm_out = }")
-        # print(f"{lstm_out = }")
+        # clue_out = torch.nn.AdaptiveAvgPool1d(1)
+        # print(f"{lstm_out.shape = }")
+        # print(f"{lstm_out[:,-1,:].shape = }")
+        # print(f"{self.pooling(lstm_out).shape = }")
+        # print(f"{lstm_out.transpose(1, 2).shape = }")
+        # print(f"{self.pooling(lstm_out.transpose(1, 2)).squeeze(-1).shape = }")
+        guess_embedded = self.guessed_embedding(guessed_tensor)
 
-        # print(f"{length = }")
-
-        # print(f"{lstm_out[:, -1, :].shape = }")
-        # print(f"{length.shape = }")
-        # print(f"{guessed_tensor.shape = }")
-        x = torch.cat([lstm_out[:, -1, :], length.view(-1, 1), guessed_tensor], dim=1)
+        x = torch.cat(
+            [
+                self.pooling(lstm_out.transpose(1, 2)).squeeze(-1),
+                length.view(-1, 1),
+                guess_embedded,
+            ],
+            dim=1,
+        )
         return self.classifier(x)
 
-    def save(
+    def save(self, working_dir: str, reinforcement=False) -> None:
+        if reinforcement:
+            torch.save(
+                self.state_dict(),
+                os.path.join(working_dir, "player_brain_reinforced_v2.pt"),
+            )
+        else:
+            torch.save(
+                self.state_dict(),
+                os.path.join(working_dir, "player_brain_supervised_v2.pt"),
+            )
+
+    def load(self, working_dir, reinforcement=False):
+        if reinforcement:
+            self.load_state_dict(
+                torch.load(os.path.join(working_dir, "player_brain_reinforced_v2.pt"))
+            )
+        else:
+            self.load_state_dict(
+                torch.load(os.path.join(working_dir, "player_brain_supervised_v2.pt"))
+            )
+
+
+# v3
+class player_brain_v3(nn.Module):
+    def __init__(
         self,
-        working_dir: str,
-    ) -> None:
-        torch.save(self.state_dict(), os.path.join(working_dir, "player_brain.pt"))
+    ):
+        super().__init__()
+        self.max_word_len = 29
 
-    def load(self, working_dir):
-        self.load_state_dict(torch.load(os.path.join(working_dir, "player_brain.pt")))
+        self.vocab_size = 28
+        self.embedding_dim = 64
 
+        self.embedding = nn.Embedding(self.vocab_size, self.embedding_dim)
 
-# class guessed_container:
-#     def __init__(self):
-#         self.reset()
-#         self.letters_to_dim = {x: int(i) for i, x in enumerate(string.ascii_lowercase)}
+        self.hidden_dim = 128
 
-#     def reset(self):
-#         self.guessed_letters = []
-#         self.guessed_tensor = torch.zeros(26)
+        self.pos_embedding = nn.Parameter(
+            torch.randn(1, self.max_word_len, self.embedding_dim)
+        )
+        self.transformer_encoder = nn.TransformerEncoder(
+            nn.TransformerEncoderLayer(
+                d_model=self.embedding_dim,
+                nhead=4,
+                dim_feedforward=128,
+                dropout=0.1,
+                batch_first=True,
+            ),
+            num_layers=2,
+        )
+        self.pooling = torch.nn.AdaptiveAvgPool1d(1)
+        guess_dim = 64  # 26 letters
 
-#     def update(self, letter):
-#         self.guessed_letters.append(letter)
-#         self.guessed_tensor[self.letters_to_dim[letter]] = torch.tensor(1.0)
+        self.guessed_embedding = self.guessed_embedding = nn.Sequential(
+            nn.Linear(26, 128), nn.ReLU(), nn.Linear(128, 64), nn.Tanh()
+        )
+
+        self.classifier_input_size = self.embedding_dim + 1 + guess_dim
+
+        self.classifier = nn.Sequential(
+            nn.Linear(self.classifier_input_size, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.Tanh(),
+            nn.Linear(128, 26),
+        )
+
+    def forward(self, clue_tensor, length, guessed_tensor):
+
+        x = self.embedding(clue_tensor)
+        pos = self.pos_embedding[:, : x.size(1), :]
+        x = x + pos
+        x = self.transformer_encoder(x)
+        x = self.pooling(x.transpose(1, 2)).squeeze(-1)
+
+        guessed = self.guessed_embedding(guessed_tensor)
+
+        out = torch.cat([x, length.view(-1, 1), guessed], dim=1)
+
+        return self.classifier(out)
+
+    def save(self, working_dir: str, reinforcement=False) -> None:
+        if reinforcement:
+            torch.save(
+                self.state_dict(),
+                os.path.join(working_dir, "player_brain_reinforced_v3.pt"),
+            )
+        else:
+            torch.save(
+                self.state_dict(),
+                os.path.join(working_dir, "player_brain_supervised_v3.pt"),
+            )
+
+    def load(self, working_dir, reinforcement=False):
+        if reinforcement:
+            self.load_state_dict(
+                torch.load(os.path.join(working_dir, "player_brain_reinforced_v3.pt"))
+            )
+        else:
+            self.load_state_dict(
+                torch.load(os.path.join(working_dir, "player_brain_supervised_v3.pt"))
+            )
 
 
 class player_agent:
@@ -98,17 +244,22 @@ class player_agent:
             length.view(1),
             guess_tensor.unsqueeze(0),
         ).squeeze()
+        guess_letter_distribution = F.log_softmax(guess_letter_distribution, dim=-1)
+        # print(f"Player letter guess distribution {guess_letter_distribution}")
         letter_priority = guess_letter_distribution.argsort(descending=True)
         # print(f"{letter_priority = }")
         letter_selection = [
-            self.dim_to_letter[int(pos.item())] for pos in letter_priority
+            (self.dim_to_letter[int(pos.item())], guess_letter_distribution[pos])
+            for pos in letter_priority
         ]
-        for letter in letter_selection:
+        # print(f"{letter_selection = }")
+        for letter, log_prob in letter_selection:
             if letter not in guess_letters:
                 guess_letter = letter
+                guess_log_prob = log_prob
                 break
 
-        return guess_letter
+        return guess_letter, guess_log_prob
 
 
 # We use the noob in order to obtain training data
