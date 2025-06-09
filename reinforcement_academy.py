@@ -20,7 +20,7 @@ import player_agent
 
 from gen_utils import get_train_val_sets, referee_agent, guessed_container, game_board
 
-outer_ind = int(10000)
+outer_ind = int(3000)
 
 
 def make_win_rates_diagnostics(i, win_rates, win_stats, losses_in_time, working_dir):
@@ -85,8 +85,9 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
             t_0 = t_1
             win_rate = 10 * np.sum(results[-outer_ind // 10 :]) / outer_ind
             win_rates.append(win_rate)
+            # time.sleep(3)
             print(
-                f"Current win rate over the last {outer_ind//10} games =  {win_rate}% win rate.\n\n"
+                f"Current win rate over the last {outer_ind//10} games =  {win_rate} win rate.\n\n"
             )
             if i % outer_ind == 0:
                 print(f"{i = }")
@@ -115,6 +116,7 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
                 make_win_rates_diagnostics(
                     i, win_rates, win_stats, losses_in_time, working_dir
                 )
+                # time.sleep(3)
 
         secret_word = random.choice(word_bank)
         # print(f"game_number = {i}")
@@ -158,9 +160,13 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
         else:
             loss += guess_log_prob
 
-        i += 1
         if i > 220000:
             break
+
+        i += 1
+
+        # if i % 10 == 0:
+        #     print(f"{i = }")
 
     print("Finished")
 
