@@ -28,7 +28,7 @@ class hangingman_academy:
         self.device = device
         self.batch_size = int(32)
         self.board = game_board(device)
-        self.supervised_epochs = 15
+        self.supervised_epochs = 20
         # self.loss_func = torch.nn.CrossEntropyLoss()
 
     def play_round():
@@ -141,7 +141,7 @@ class hangingman_academy:
                     )
                     if strikes_left == 0:
                         print("Early stopping triggered.")
-                        break
+                        # break
                 else:
                     strikes_left = strikes_allowed
                     min_relative_improvement = max_min_relative_improvement
@@ -162,13 +162,10 @@ if __name__ == "__main__":
     working_dir = "./supervised_results"
     academy = hangingman_academy(device)
     brain = academy.train_player_supervised(working_dir)
-    # player = player_agent.player_agent(device)
-    # brain = player_agent.player_brain_v3().to(device)
-    # brain.load(working_dir)
 
     train, val = get_train_val_sets()
 
-    # brain = player_agent.player_brain_v3()
+    # brain = player_agent.player_brain_v4()
     # brain.load(working_dir)
     play_games(brain, val["word"].to_list(), working_dir)
 

@@ -24,6 +24,7 @@ from gen_utils import get_train_val_sets, referee_agent, guessed_container, game
 def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train=False):
     board = game_board(device)
     if train:
+        print("Training a player\n\n")
         optimizer = torch.optim.Adam(brain.parameters(), lr=1e-3)
     player = player_agent.player_agent(device)
     player.implant_brain(brain)
@@ -32,6 +33,7 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
     t_0 = time.time()
     i = 0
     win_rates = []
+    win_stats = []
     while True:
         secret_word = random.choice(word_bank)
         # print(f"game_number = {i}")
@@ -63,7 +65,7 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
             if round_result:
                 round_scores.append(1)
             else:
-                round_scores.append(-1)
+                round_scores.append(0)
 
             guess_log_prob_record.append(guess_log_prob)
 
@@ -96,6 +98,7 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
             print(f"time for 100 games = {t_1-t_0}")
             t_0 = t_1
             if train:
+                print("saved")
                 brain.save(working_dir, reinforcement=True)
             win_rate = np.sum(results[-100:])
             win_rates.append(win_rate)
@@ -104,12 +107,19 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
             )
             if i % 1000 == 0:
                 print(f"{i = }")
-                print(
-                    f"During the last 10 batces of 100 games:\nmean win rate = {np.mean(win_rates[-10:])}\nstd win rate = {np.std(win_rates[-10:])}\n"
-                )
+                mean = np.mean(win_rates[-10:])
+                std = np.std(win_rates[-10:])
 
-            if win_rate >= 60:
-                break
+                print(
+                    f"During the last 10 batces of 100 games:\nmean win rate = {mean}\nstd win rate = {std}\n"
+                )
+                if i > 2000:
+                    print(
+                        f"Overall improvement in means and std {mean - win_stats[-1][0]} and std {std - win_stats[-1][1]}"
+                    )
+                win_stats.append((mean, std))
+            # if win_rate >= 60:
+            # break
 
         i += 1
 
@@ -123,7 +133,8 @@ if __name__ == "__main__":
 
     train, val = get_train_val_sets()
 
+    # brain = player_agent.player_brain_v4()
     brain = player_agent.player_brain_v2()
-    brain.load(working_dir)
+    brain.load(working_dir, reinforcement=False)
 
     play_games(brain, train["word"].to_list(), working_dir, train=True)
