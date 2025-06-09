@@ -140,11 +140,11 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
             )
             guess_cont.update(guess_letter)
 
-            # round_result = referee.get_player_guess(guess_letter)
-            # if round_result:
-            #     loss += -guess_log_prob
-            # else:
-            #     loss += guess_log_prob
+            round_result = referee.get_player_guess(guess_letter)
+            if round_result:
+                loss += -guess_log_prob
+            else:
+                loss += guess_log_prob
 
         #     print(f"{clue = }")
         #     print(f"{guess_letter = } ")
@@ -155,10 +155,10 @@ def play_games(brain, word_bank, working_dir, device="cpu", num_strikes=6, train
         # print(f"Game won? {referee.game_won}\n\n")
         results.append(referee.game_won)
 
-        if referee.game_won:
-            loss += -guess_log_prob
-        else:
-            loss += guess_log_prob
+        # if referee.game_won:
+        #     loss += -guess_log_prob
+        # else:
+        #     loss += guess_log_prob
 
         if i > 220000:
             break
