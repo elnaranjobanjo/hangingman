@@ -20,90 +20,91 @@ import player_agent
 
 from gen_utils import get_train_val_sets, referee_agent, guessed_container, game_board
 
+from reinforcement_academy import play_games
 
-def play_games(
-    player,
-    word_bank,
-    device,
-    num_games=10,
-    num_strikes=6,
-    working_add=None,
-):
+# def play_games(
+#     player,
+#     word_bank,
+#     device,
+#     num_games=10,
+#     num_strikes=6,
+#     working_add=None,
+# ):
 
-    board = game_board(device)
-    if working_add:
-        os.makedirs(working_add, exist_ok=True)
-        game_records = []
-    results = []
-    t_0 = time.time()
-    for i, secret_word in enumerate(random.sample(word_bank, k=num_games)):
-        # print(f"game_number = {i}")
-        # print(f"{secret_word = }")
-        # print("Game has started\n")
+#     board = game_board(device)
+#     if working_add:
+#         os.makedirs(working_add, exist_ok=True)
+#         game_records = []
+#     results = []
+#     t_0 = time.time()
+#     for i, secret_word in enumerate(random.sample(word_bank, k=num_games)):
+#         # print(f"game_number = {i}")
+#         # print(f"{secret_word = }")
+#         # print("Game has started\n")
 
-        referee = referee_agent(secret_word, num_strikes)
-        guess_cont = guessed_container()
+#         referee = referee_agent(secret_word, num_strikes)
+#         guess_cont = guessed_container()
 
-        if working_add:
-            game_records.append(
-                [
-                    referee.provide_word_clue(),
-                    list(player.guessed_letters),
-                    list(referee.letter_prob_dist.values()),
-                ]
-            )
+#         if working_add:
+#             game_records.append(
+#                 [
+#                     referee.provide_word_clue(),
+#                     list(player.guessed_letters),
+#                     list(referee.letter_prob_dist.values()),
+#                 ]
+#             )
 
-        while not referee.game_finished:
-            clue = referee.provide_word_clue()
-            print(f"{clue = }")
-            clue_tensor, length = board.get_single_clue_tensor(clue[::2]).to(
-                device
-            ), torch.tensor(len(clue[::2]) / 29.0).to(device)
-            guess = player.guess(
-                clue_tensor.to(device),
-                torch.tensor(length),
-                guess_cont.guessed_tensor.to(device),
-                guess_cont.guessed_letters,
-            )
-            guess_cont.update(guess)
-            if working_add:
-                round_result = referee.get_player_guess(
-                    guess, guessed_container=player.guessed_letters
-                )
-            else:
-                round_result = referee.get_player_guess(guess)
-            # print(f"{clue = }")
-            # print(f"{guess = } ")
-            # print(f"Guess correct? {round_result}")
-            # print(f"{guess_cont.guessed_letters = }")
-            # print(f"{referee.letter_prob_dist = }")
-            # print(f"Player trials left = {referee.num_strikes}\n")
+#         while not referee.game_finished:
+#             clue = referee.provide_word_clue()
+#             print(f"{clue = }")
+#             clue_tensor, length = board.get_single_clue_tensor(clue[::2]).to(
+#                 device
+#             ), torch.tensor(len(clue[::2]) / 29.0).to(device)
+#             guess = player.guess(
+#                 clue_tensor.to(device),
+#                 torch.tensor(length),
+#                 guess_cont.guessed_tensor.to(device),
+#                 guess_cont.guessed_letters,
+#             )
+#             guess_cont.update(guess)
+#             if working_add:
+#                 round_result = referee.get_player_guess(
+#                     guess, guessed_container=player.guessed_letters
+#                 )
+#             else:
+#                 round_result = referee.get_player_guess(guess)
+#             # print(f"{clue = }")
+#             # print(f"{guess = } ")
+#             # print(f"Guess correct? {round_result}")
+#             # print(f"{guess_cont.guessed_letters = }")
+#             # print(f"{referee.letter_prob_dist = }")
+#             # print(f"Player trials left = {referee.num_strikes}\n")
 
-            if working_add:
-                game_records.append(
-                    [
-                        referee.provide_word_clue(),
-                        list(player.guessed_letters),
-                        [v for v in referee.letter_prob_dist.values()],
-                    ]
-                )
+#             if working_add:
+#                 game_records.append(
+#                     [
+#                         referee.provide_word_clue(),
+#                         list(player.guessed_letters),
+#                         [v for v in referee.letter_prob_dist.values()],
+#                     ]
+#                 )
 
-        if i % 100 == 0:
-            t_1 = time.time()
-            print(f"time for 100 games = {t_1-t_0}")
-            t_0 = t_1
-        print(f"Game won? {referee.game_won}\n\n")
-        results.append(referee.game_won)
+#         if i % 100 == 0:
+#             t_1 = time.time()
+#             print(f"time for 100 games = {t_1-t_0}")
+#             t_0 = t_1
+#         print(f"Game won? {referee.game_won}\n\n")
+#         results.append(referee.game_won)
 
-    # print(f"{game_records["clue"].head() = }")
-    # print(f"{game_records["guesses"].head() = }")
-    # print(f"{game_records["true_prob_distribution"].head() = }")
-    print(f"{working_add = }")
-    if working_add:
-        pd.DataFrame(
-            game_records, columns=["clue", "guesses", "true_prob_distribution"]
-        ).to_csv(os.path.join(working_dir, "training.csv"), index=False)
-    return results, 1
+#     # print(f"{game_records["clue"].head() = }")
+#     # print(f"{game_records["guesses"].head() = }")
+#     # print(f"{game_records["true_prob_distribution"].head() = }")
+#     print(f"{working_add = }")
+#     if working_add:
+#         pd.DataFrame(
+#             game_records, columns=["clue", "guesses", "true_prob_distribution"]
+#         ).to_csv(os.path.join(working_dir, "training.csv"), index=False)
+#     return results, 1
 
 
 class hangingman_academy:
@@ -246,24 +247,25 @@ if __name__ == "__main__":
     player = player_agent.player_agent(device)
     brain = player_agent.player_brain_v3().to(device)
     brain.load(working_dir)
-    player.implant_brain(brain)
-    # print("Done training")
 
     train, val = get_train_val_sets()
-    num_games = 2000  # val.shape[0]
-    print(f"Validating {num_games = }")
-    games_results = play_games(
-        player,
-        val["word"].to_list(),
-        device,
-        num_games=num_games,
-        num_strikes=6,
-        working_add=None,
-    )
 
-    print(
-        f"Played a total of: {num_games} and won {np.sum(games_results)}\nThis represents a {100*np.sum(games_results)/num_games}% win rate."
-    )
+    brain = player_agent.player_brain_v3()
+    brain.load(working_dir)
+    play_games(brain, val["word"].to_list(), working_dir)
+
+    # games_results = play_games(
+    #     player,
+    #     val["word"].to_list(),
+    #     device,
+    #     num_games=num_games,
+    #     num_strikes=6,
+    #     working_add=None,
+    # )
+
+    # print(
+    #     f"Played a total of: {num_games} and won {np.sum(games_results)}\nThis represents a {100*np.sum(games_results)/num_games}% win rate."
+    # )
 
 
 # We'll extract the necessary data for our supervised learning algorithm.
