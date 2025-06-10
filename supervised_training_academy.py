@@ -28,7 +28,7 @@ class hangingman_academy:
         self.device = device
         self.batch_size = int(1024)
         self.board = game_board(device)
-        self.supervised_epochs = 150
+        self.supervised_epochs = 50
         # self.loss_func = torch.nn.CrossEntropyLoss()
 
     def play_round():
@@ -81,8 +81,18 @@ class hangingman_academy:
         training_assignments = self.get_training_assingments_supervised(working_dir)
         t_1 = time.time()
         print(f"unpacking training data took: {t_1-t_0}")
-        brain = player_agent.player_brain_v4().to(self.device)
+        brain = player_agent.player_brain_v6().to(self.device)
         optimizer = torch.optim.Adam(brain.parameters(), lr=1e-3)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=0.5,
+            patience=3,
+            threshold=1e-4,
+            threshold_mode="abs",
+            cooldown=1,
+            min_lr=1e-5,
+        )
 
         total_training_time = 0
         losses_in_time = []
@@ -114,6 +124,9 @@ class hangingman_academy:
                 loss.backward()
                 optimizer.step()
                 total_loss += loss.item()
+
+            print(f"learn rate was = {scheduler.get_last_lr()[-1]}")
+            scheduler.step(total_loss)
 
             epoch_time = time.time() - t_0
             total_training_time += epoch_time
@@ -163,12 +176,18 @@ if __name__ == "__main__":
     working_dir = "./supervised_results"
     academy = hangingman_academy(device)
     brain = academy.train_player_supervised(working_dir)
+    # brain = player_agent.player_brain_v6()
+    # brain.load(working_dir)
+    # train, val = get_train_val_sets()
+    # play_games(brain, val["word"].to_list(), working_dir, num_games=25000, train=False)
 
-    train, val = get_train_val_sets()
+    # play_games(
+    #     brain, train["word"].to_list(), working_dir, num_games=5000000, train=True
+    # )
 
-    # brains = player_agent.player_brain_v4().to("cpu")
-    # brains.load(working_dir)
-    play_games(brain, val["word"].to_list(), working_dir)
+    # brain = player_agent.player_brain_v4()
+    # brain.load(working_dir, reinforce=True)
+    # play_games(brain, val["word"].to_list(), working_dir)
 
     # games_results = play_games(
     #     player,
