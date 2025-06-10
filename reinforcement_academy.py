@@ -135,7 +135,7 @@ def play_games(
     board = game_board(device)
     if train:
         print("Training a player\n\n")
-        optimizer = torch.optim.Adam(brain.parameters(), lr=1e-4)
+        optimizer = torch.optim.Adam(brain.parameters(), lr=1e-3)
     player = player_agent.player_agent(device)
     player.implant_brain(brain.to("cpu"))
 
@@ -151,6 +151,9 @@ def play_games(
     T = 0
     while True:
         i += 1
+        if i == num_games:
+            break
+
         if 10 * i % outer_ind == 0:
 
             t_1 = time.time()
@@ -238,7 +241,7 @@ def play_games(
 
             round_result = referee.get_player_guess(guess_letter)
 
-            rewards.append(5.0 if round_result else 1.0)
+            rewards.append(1.0 if round_result else -1.0)
             log_probs.append(guess_log_prob)
 
         #     print(f"{clue = }")
@@ -248,13 +251,10 @@ def play_games(
         #     print(f"Player trials left = {referee.num_strikes}\n")
 
         # print(f"Game won? {referee.game_won}\n\n")
-        game_reward = 15.0 if referee.game_won else 0.5
+        game_reward = 10.0 if referee.game_won else -10.0
         rewards = [x + game_reward / len(rewards) for x in rewards]
         loss += sum([-lp * r for lp, r in zip(log_probs, rewards)]) / len(rewards)
         results.append(referee.game_won)
-
-        if i == num_games:
-            break
 
         # if i % 10 == 0:
         #     print(f"{i = }")
@@ -273,9 +273,9 @@ if __name__ == "__main__":
 
     brain = player_agent.player_brain_v4()
     # brain = player_agent.player_brain_v2()
-    brain.load(working_dir, reinforcement=False)
+    brain.load(working_dir, reinforcement=True)
     play_games(
-        brain, train["word"].to_list(), working_dir, train=True, num_games=10000000
+        brain, train["word"].to_list(), working_dir, train=True, num_games=5000000
     )
 
     brain.load(working_dir, reinforcement=False)
