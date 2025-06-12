@@ -135,7 +135,7 @@ def play_games(
     board = game_board(device)
     if train:
         print("Training a player\n\n")
-        optimizer = torch.optim.Adam(brain.parameters(), lr=1e-3)
+        optimizer = torch.optim.Adam(brain.parameters(), lr=1e-2)
     player = player_agent.player_agent(device)
     player.implant_brain(brain.to("cpu"))
 
@@ -264,6 +264,7 @@ def play_games(
 
 if __name__ == "__main__":
     random_seed = 137
+
     random.seed(random_seed)
     torch.set_default_dtype(torch.float32)
 
@@ -273,7 +274,7 @@ if __name__ == "__main__":
 
     brain = player_agent.player_brain_v4()
     # brain = player_agent.player_brain_v2()
-    brain.load(working_dir, reinforcement=True)
+    # brain.load(working_dir, reinforcement=True)
     play_games(
         brain, train["word"].to_list(), working_dir, train=True, num_games=5000000
     )

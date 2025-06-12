@@ -72,7 +72,6 @@ class referee_agent:
             self.num_strikes += -int(1)
             if self.num_strikes == 0:
                 self.game_finished = True
-                self.game_won == False
         if guessed_container:
             self.update_prob_dist(guessed_container)
         return correct
