@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 
 import player_agent
 
-from gen_utils import get_train_val_sets  # referee_agent, guessed_container, game_board
+from gen_utils import get_train_val_sets
 
 
 class referee_agent:
@@ -140,16 +140,26 @@ class game_board:
         ).to(self.device)
 
 
+def process_and_save_torch_data(raw, working_dir):
+    board = game_board("cpu")
+    print(f"size training set = {raw.shape}")
+    clue, length = board.get_batch_clue_tensor(raw["clue"].to_list())
+    guesses = board.get_batch_guess_tensor(raw["guesses"].to_list())
+    true_prob_dist = board.get_batch_true_letter_prob_dist(
+        raw["true_prob_distribution"].to_list()
+    )
+    training_dataset = TensorDataset(clue, length, guesses, true_prob_dist)
+    torch.save(training_dataset, os.path.join(working_dir, "training_data.pt"))
+
+
 def play_games(
     player,
     word_bank,
-    device,
     num_games=10,
     num_strikes=6,
     working_add=None,
 ):
 
-    board = game_board(device)
     if working_add:
         os.makedirs(working_add, exist_ok=True)
         game_records = []
@@ -179,12 +189,7 @@ def play_games(
             guess = player.guess(clue)
 
             guess_cont.update(guess)
-            if working_add:
-                round_result = referee.get_player_guess(
-                    guess, guessed_container=player.guessed_letters
-                )
-            else:
-                round_result = referee.get_player_guess(guess)
+            _ = referee.get_player_guess(guess)
             # results.append(round_result)
             # print(f"{guess = } ")
             # print(f"Guess correct? {round_result}")
@@ -214,10 +219,13 @@ def play_games(
     # print(f"{game_records["guesses"].head() = }")
     # print(f"{game_records["true_prob_distribution"].head() = }")
 
-    if working_add:
-        pd.DataFrame(
-            game_records, columns=["clue", "guesses", "true_prob_distribution"]
-        ).to_csv(os.path.join(working_add, "training.csv"), index=False)
+    raw = pd.DataFrame(
+        game_records, columns=["clue", "guesses", "true_prob_distribution"]
+    )
+    raw.to_csv(os.path.join(working_add, "training.csv"), index=False)
+
+    process_and_save_torch_data(raw, working_add)
+
     return results
 
 
